@@ -1,6 +1,7 @@
 package notion
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/kjk/notionapi"
 	"github.com/kjk/notionapi/tomarkdown"
@@ -8,6 +9,7 @@ import (
 	"github.com/xujiahua/notion-md/pkg/util"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 type Manager struct {
@@ -61,8 +63,44 @@ func (m Manager) Do() {
 func (m Manager) toMarkdown(page *notionapi.Page) error {
 	filename := tomarkdown.MarkdownFileNameForPage(page)
 	filename = filepath.Join(m.outputDir, filename)
+	metadata := extractMetadata(page)
 	data := tomarkdown.ToMarkdown(page)
+	// NOTE: trim title line at the beginning
+	for i, c := range data {
+		// meet first line
+		if c == '\n' {
+			data = data[i+1:]
+			break
+		}
+	}
+	data = append(metadata, data...)
 	return util.WriteFile(data, filename)
+}
+
+func extractMetadata(page *notionapi.Page) []byte {
+	var buf bytes.Buffer
+	buf.WriteString("---\n")
+	title, date := extractTitleAndDate(page)
+	buf.WriteString(fmt.Sprintf("title: \"%s\"\n", title))
+	buf.WriteString(fmt.Sprintf("date: \"%s\"\n", date))
+	buf.WriteString("draft: true\n")
+	buf.WriteString("toc: true\n")
+	buf.WriteString("autoCollapseToc: false\n")
+	buf.WriteString("comment: true\n")
+	buf.WriteString("---\n")
+	return buf.Bytes()
+}
+
+func extractTitleAndDate(page *notionapi.Page) (string, string) {
+	var title string
+	var date string
+	page.ForEachBlock(func(block *notionapi.Block) {
+		if block.Type == notionapi.BlockPage {
+			title = block.Title
+			date = block.CreatedOn().Format(time.RFC3339)
+		}
+	})
+	return title, date
 }
 
 func (m Manager) downloadImages(page *notionapi.Page) error {
