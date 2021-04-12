@@ -29,13 +29,14 @@ var cfgFile string
 var rootPageID string
 var token string
 var outputDir string
+var hugoImagePrefix string
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "notion-md",
 	Short: "convert notion pages into markdowns",
 	Run: func(cmd *cobra.Command, args []string) {
-		notion.New(token, rootPageID, outputDir).Do()
+		notion.New(token, rootPageID, outputDir, hugoImagePrefix).Do()
 	},
 }
 
@@ -56,6 +57,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&rootPageID, "id", "i", "", "id of root page which contains subpages")
 	rootCmd.PersistentFlags().StringVarP(&token, "token", "t", "", "notion token")
 	rootCmd.PersistentFlags().StringVarP(&outputDir, "output", "o", "./output", "output directory of markdowns and images")
+	rootCmd.PersistentFlags().StringVarP(&hugoImagePrefix, "prefix", "p", "", "hugo markdown image prefix (relative path to image folder)")
 }
 
 // initConfig reads in config file and ENV variables if set.

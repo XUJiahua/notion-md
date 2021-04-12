@@ -14,11 +14,13 @@ import (
 
 type Manager struct {
 	*notionapi.Client
-	outputDir  string
-	rootPageID string
+	outputDir       string
+	imageOutputDir  string
+	rootPageID      string
+	hugoImagePrefix string
 }
 
-func New(token, rootPageID, outputDir string) *Manager {
+func New(token, rootPageID, outputDir, hugoImagePrefix string) *Manager {
 	logrus.Debugf("token: %s\n", token)
 	logrus.Debugf("rootPageID: %s\n", rootPageID)
 	logrus.Debugf("outputDir: %s\n", outputDir)
@@ -26,10 +28,17 @@ func New(token, rootPageID, outputDir string) *Manager {
 	client := &notionapi.Client{}
 	client.AuthToken = token
 
+	imageOutputDir := outputDir
+	if hugoImagePrefix != "" {
+		imageOutputDir = filepath.Join(outputDir, hugoImagePrefix)
+	}
+
 	return &Manager{
-		Client:     client,
-		outputDir:  outputDir,
-		rootPageID: rootPageID,
+		Client:          client,
+		outputDir:       outputDir,
+		rootPageID:      rootPageID,
+		hugoImagePrefix: hugoImagePrefix,
+		imageOutputDir:  imageOutputDir,
 	}
 }
 
@@ -64,7 +73,40 @@ func (m Manager) toMarkdown(page *notionapi.Page) error {
 	filename := tomarkdown.MarkdownFileNameForPage(page)
 	filename = filepath.Join(m.outputDir, filename)
 	metadata := extractMetadata(page)
-	data := tomarkdown.ToMarkdown(page)
+	// use custom converter for hugo compatible
+	//data := tomarkdown.ToMarkdown(page)
+	c := tomarkdown.NewConverter(page)
+	c.RenderBlockOverride = func(block *notionapi.Block) bool {
+		if notionapi.BlockImage == block.Type {
+			// copy and change slightly
+			if len(block.FileIDs) == 0 {
+				c.WriteString("RenderImage when len(FileIDs) == 0 NYI\n")
+			}
+			source := block.Source // also present in block.Format.DisplaySource
+			var fileID string
+			if len(block.FileIDs) > 0 {
+				fileID = block.FileIDs[0]
+			}
+			parts := strings.Split(source, "/")
+			fileName := parts[len(parts)-1]
+			parts = strings.SplitN(fileName, ".", 2)
+			ext := ""
+			if len(parts) == 2 {
+				fileName = parts[0]
+				ext = "." + parts[1]
+			}
+			filename := fmt.Sprintf("%s-%s%s", fileName, fileID, ext)
+			filename = filepath.Join(m.hugoImagePrefix, filename)
+			c.Printf("![](%s)\n", filename)
+
+			return true
+		}
+
+		// use default render function
+		return false
+	}
+	data := c.ToMarkdown()
+
 	// NOTE: trim title line at the beginning
 	for i, c := range data {
 		// meet first line
@@ -109,7 +151,7 @@ func (m Manager) downloadImages(page *notionapi.Page) error {
 	page.ForEachBlock(func(block *notionapi.Block) {
 		if block.IsImage() {
 			filename := getImageFilename(block)
-			filename = filepath.Join(m.outputDir, filename)
+			filename = filepath.Join(m.imageOutputDir, filename)
 			downloadFileResponse, err := m.DownloadFile(block.Source, block.ID)
 			if err != nil {
 				errstrings = append(errstrings, err.Error())
