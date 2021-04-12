@@ -83,7 +83,7 @@ func extractMetadata(page *notionapi.Page) []byte {
 	title, date := extractTitleAndDate(page)
 	buf.WriteString(fmt.Sprintf("title: \"%s\"\n", title))
 	buf.WriteString(fmt.Sprintf("date: \"%s\"\n", date))
-	buf.WriteString("draft: true\n")
+	buf.WriteString("draft: false\n")
 	buf.WriteString("toc: true\n")
 	buf.WriteString("autoCollapseToc: false\n")
 	buf.WriteString("comment: true\n")
