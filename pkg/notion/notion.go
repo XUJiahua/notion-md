@@ -18,6 +18,8 @@ type Manager struct {
 	imageOutputDir  string
 	rootPageID      string
 	hugoImagePrefix string
+	tags            map[string][]string
+	categories      map[string][]string
 }
 
 func New(token, rootPageID, outputDir, hugoImagePrefix string) *Manager {
@@ -39,17 +41,54 @@ func New(token, rootPageID, outputDir, hugoImagePrefix string) *Manager {
 		rootPageID:      rootPageID,
 		hugoImagePrefix: hugoImagePrefix,
 		imageOutputDir:  imageOutputDir,
+		tags:            make(map[string][]string),
+		categories:      make(map[string][]string),
 	}
 }
 
-func (m Manager) Do() {
+func (m Manager) Do(supportListView bool) {
 	rootPage, err := m.DownloadPage(m.rootPageID)
 	if err != nil {
 		logrus.Errorf("unable to download rootPage %s, %v", m.rootPageID, err)
 		return
 	}
 
-	for _, pageID := range rootPage.GetSubPages() {
+	if !supportListView {
+		m.handleBlogPages(rootPage.GetSubPages())
+		return
+	}
+
+	if len(rootPage.TableViews) == 0 {
+		logrus.Error("expect to get blog pages from 1st view")
+		return
+	}
+
+	mapping := make(map[string]string)
+	for notionInternalID, displayName := range rootPage.TableViews[0].Collection.Schema {
+		mapping[notionInternalID] = displayName.Name
+	}
+
+	var list []string
+	for _, row := range rootPage.TableViews[0].Rows {
+		list = append(list, row.Page.ID)
+		for notionInternalID := range row.Page.Properties {
+			fieldName := mapping[notionInternalID]
+			var values []string
+			for _, text := range row.Page.GetProperty(notionInternalID) {
+				values = append(values, text.Text)
+			}
+			if fieldName == "Categories" {
+				m.categories[row.Page.ID] = values
+			} else if fieldName == "Tags" {
+				m.tags[row.Page.ID] = values
+			}
+		}
+	}
+	m.handleBlogPages(list)
+}
+
+func (m Manager) handleBlogPages(list []string) {
+	for _, pageID := range list {
 		logrus.Infof("downloading page %s", pageID)
 		page, err := m.DownloadPage(pageID)
 		if err != nil {
@@ -72,7 +111,7 @@ func (m Manager) Do() {
 func (m Manager) toMarkdown(page *notionapi.Page) error {
 	filename := tomarkdown.MarkdownFileNameForPage(page)
 	filename = filepath.Join(m.outputDir, filename)
-	metadata := extractMetadata(page)
+	metadata := extractMetadata(page, m.categories[page.ID], m.tags[page.ID])
 	// use custom converter for hugo compatible
 	//data := tomarkdown.ToMarkdown(page)
 	c := tomarkdown.NewConverter(page)
@@ -119,7 +158,7 @@ func (m Manager) toMarkdown(page *notionapi.Page) error {
 	return util.WriteFile(data, filename)
 }
 
-func extractMetadata(page *notionapi.Page) []byte {
+func extractMetadata(page *notionapi.Page, categories, tags []string) []byte {
 	var buf bytes.Buffer
 	buf.WriteString("---\n")
 	title, date := extractTitleAndDate(page)
@@ -129,6 +168,8 @@ func extractMetadata(page *notionapi.Page) []byte {
 	buf.WriteString("toc: true\n")
 	buf.WriteString("autoCollapseToc: false\n")
 	buf.WriteString("comment: true\n")
+	buf.WriteString(fmt.Sprintf("categories: [%s]\n", strings.Join(categories, ",")))
+	buf.WriteString(fmt.Sprintf("tags: [%s]\n", strings.Join(tags, ",")))
 	buf.WriteString("---\n")
 	return buf.Bytes()
 }
