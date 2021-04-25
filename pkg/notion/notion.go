@@ -139,8 +139,13 @@ func (m Manager) toMarkdown(page *notionapi.Page) error {
 			c.Printf("![](%s)\n", filename)
 
 			return true
-		}
+		} else if notionapi.BlockCode == block.Type {
+			c.Printf("```\n")
+			c.Printf(block.Code)
+			c.Printf("\n```\n")
 
+			return true
+		}
 		// use default render function
 		return false
 	}
