@@ -1,6 +1,8 @@
 
 # notion-md
 
+[中文说明](https://xujiahua.github.io/posts/notion-markdown-hugo-78139407-85c5-4a75-b288-b54d5c3df34b/)
+
 convert notion pages into markdowns (and download images).
 
 markdown is hugo compatible.
